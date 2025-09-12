@@ -1,0 +1,39 @@
+# Бинарные файлы
+url-shortener
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Файлы Go
+/bin/
+/pkg/
+/vendor/
+
+# Файлы зависимостей
+go.sum
+
+# Файлы IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Логи и временные файлы
+*.log
+*.tmp
+*.temp
+
+# Файлы окружения (не коммитим секреты!)
+.env
+.env.local
+.env.production
+
+# Docker
+Dockerfile-dev
+docker-compose.override.yml
+
+# Тестовые данные
+/testdata/
+/coverage.txt
