@@ -4,6 +4,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -123,7 +124,8 @@ func TestCreaqteShortURLEmptyBody(t *testing.T) {
 	}
 }
 
-// TestRedirectToOriginalURL тетстируем перенаправление по короткой ссылке - основной функционал сервиса
+// TestRedirectToOriginalURL tests redirection functionality
+// Тестируем перенаправление по короткой ссылке - основной функционал сервиса
 func TestRedirectToOriginalURL(t *testing.T) {
 	mockStorage := storage.NewMockStorage()
 	cfg := &config.Config{}
@@ -137,19 +139,25 @@ func TestRedirectToOriginalURL(t *testing.T) {
 		ShortCode:   "abc123",
 		ClickCount:  0,
 	}
-	mockStorage.URLs["abc123"] = testURL
+	// Сохраняем через метод CreateURL
+	ctx := context.Background()
+	err := mockStorage.CreateURL(ctx, testURL)
+	if err != nil {
+		t.Fatalf("Failed to create test URL: %v", err)
+	}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
 	router.GET("/:shortCode", handler.RedirectToOriginalURL)
 
-	req, _ := http.NewRequest("GET", "abc123", nil)
+	// Важно: используем с параметром
+	req, _ := http.NewRequest("GET", "/abc123", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	// Должны получить redirect 302 Found
 	if w.Code != http.StatusFound {
-		t.Errorf("Expected status 302, got %d", w.Code)
+		t.Errorf("Expected status 302, got %d. Body: %s", w.Code, w.Body.String())
 	}
 
 	// Проверяем Location header - должен содержать оригинальный URL
@@ -159,8 +167,14 @@ func TestRedirectToOriginalURL(t *testing.T) {
 	}
 
 	// Проверяем, что счетчик кликов увеличился
-	if mockStorage.URLs["abc123"].ClickCount != 1 {
-		t.Errorf("Click count should be 1, got %d", mockStorage.URLs["abc123"].ClickCount)
+	// Нужно получить обновленные данные из storage
+	updatedURL, err := mockStorage.GetURLByShortCode(ctx, "abc123")
+	if err != nil {
+		t.Fatalf("Failed to get updated URL: %v", err)
+	}
+
+	if updatedURL.ClickCount != 1 {
+		t.Errorf("Click count should be 1, got %d", updatedURL.ClickCount)
 	}
 }
 
