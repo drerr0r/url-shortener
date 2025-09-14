@@ -1,27 +1,27 @@
 # Makefile для управления проектом URL Shortener
 
-# Применение
+# Переменные
 BINARY_NAME=url-shortener
 DOCKER_COMPOSE=docker-compose
 GO=go
 MIGRATIONS_DIR=migrations
 
-.PHONY: help build run test clean migrate-up migrate-down docker-up docker-do wn docker-build
+.PHONY: help build run clean migrate-up migrate-down docker-up docker-down docker-build docker-logs docker-restart lint vendor swagger deploy test test-cover test-cover-html test-handlers test-utils test-storage
 
 help: ## Показать помощь по командам
-	@echo "Доступные команды"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {print " \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo "Доступные команды:"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 build: ## Собрать приложение
 	$(GO) build -o $(BINARY_NAME) ./cmd/server
 
-run: ## Запустить риложение локально
+run: ## Запустить приложение локально
 	$(GO) run ./cmd/server
 
 test: ## Запустить тесты
 	$(GO) test ./... -v
 
-clean: ## Очистить скомпилированые файлы
+clean: ## Очистить скомпилированные файлы
 	$(GO) clean
 	rm -f $(BINARY_NAME)
 
@@ -34,10 +34,10 @@ migrate-down: ## Откатить последнюю миграцию
 migrate-status: ## Показать статус миграций
 	goose -dir $(MIGRATIONS_DIR) postgres "postgres://postgres:password@localhost:5432/urlshortener?sslmode=disable" status
 
-docker-up: ## Запустить контейнер Docker
+docker-up: ## Запустить контейнеры Docker
 	$(DOCKER_COMPOSE) up -d
 
-docker-down: ## Остановить контейнер Docker
+docker-down: ## Остановить контейнеры Docker
 	$(DOCKER_COMPOSE) down
 
 docker-build: ## Собрать Docker образ
@@ -52,35 +52,27 @@ docker-restart: ## Перезапустить контейнеры
 lint: ## Запустить линтеры
 	golangci-lint run
 
-vendor: ##Скачать зависимости в vendor
+vendor: ## Скачать зависимости в vendor
 	$(GO) mod vendor
 
-swagger: ## Генерировать Swagger документацию (нежно добавить swagger)
-	swag init -g cmd/server/main.go	
+swagger: ## Генерировать Swagger документацию
+	swag init -g cmd/server/main.go
 
-.PHONY: deploy
-deploy: docker-build docker-up migrate-up ## Полный деплой: собрать запустить, применить миграции
-
-# ... существующий Makefile ...
-
-test: ## Run all tests
-    go test ./... -v
+deploy: docker-build docker-up migrate-up ## Полный деплой: собрать, запустить, применить миграции
 
 test-cover: ## Run tests with coverage report
-    go test ./... -cover
+	$(GO) test ./... -cover
 
 test-cover-html: ## Generate HTML coverage report
-    go test ./... -coverprofile=coverage.out
-    go tool cover -html=coverage.out -o coverage.html
-    @echo "Open coverage.html in your browser"
+	$(GO) test ./... -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Open coverage.html in your browser"
 
 test-handlers: ## Run only handler tests
-    go test ./internal/handlers/ -v
+	$(GO) test ./internal/handlers/ -v
 
 test-utils: ## Run only utils tests
-    go test ./internal/utils/ -v
+	$(GO) test ./internal/utils/ -v
 
 test-storage: ## Run only storage tests
-    go test ./internal/storage/ -v
-
-.PHONY: test test-cover test-cover-html test-handlers test-utils test-storage
+	$(GO) test ./internal/storage/ -v
