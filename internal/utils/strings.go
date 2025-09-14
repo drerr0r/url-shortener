@@ -4,12 +4,18 @@ package utils
 
 import (
 	"crypto/rand"
+	"fmt"
 	"math/big"
 )
 
 // GenerateRandomString генерирует случайную строку заданной длины
 // Используется для создания коротких кодов ссылок
+// Важно: длина должна быть положительным числом
 func GenerateRandomString(lenght int) (string, error) {
+	if lenght <= 0 {
+		return "", fmt.Errorf("lenght must be positive, got %d", lenght)
+	}
+
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 	result := make([]byte, lenght)
