@@ -2,7 +2,7 @@
 
 # Применение
 BINARY_NAME=url-shortener
-DOCKER_COMPOSE=docker_compose
+DOCKER_COMPOSE=docker-compose
 GO=go
 MIGRATIONS_DIR=migrations
 
@@ -60,5 +60,27 @@ swagger: ## Генерировать Swagger документацию (нежн�
 
 .PHONY: deploy
 deploy: docker-build docker-up migrate-up ## Полный деплой: собрать запустить, применить миграции
-	
 
+# ... существующий Makefile ...
+
+test: ## Run all tests
+    go test ./... -v
+
+test-cover: ## Run tests with coverage report
+    go test ./... -cover
+
+test-cover-html: ## Generate HTML coverage report
+    go test ./... -coverprofile=coverage.out
+    go tool cover -html=coverage.out -o coverage.html
+    @echo "Open coverage.html in your browser"
+
+test-handlers: ## Run only handler tests
+    go test ./internal/handlers/ -v
+
+test-utils: ## Run only utils tests
+    go test ./internal/utils/ -v
+
+test-storage: ## Run only storage tests
+    go test ./internal/storage/ -v
+
+.PHONY: test test-cover test-cover-html test-handlers test-utils test-storage

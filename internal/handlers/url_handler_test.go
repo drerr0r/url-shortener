@@ -198,3 +198,73 @@ func TestRedirectToOriginalURL_NotFound(t *testing.T) {
 		t.Errorf("Expected status 404 for non-existent short code, got %d", w.Code)
 	}
 }
+
+// TestGetURLStats тестируем получение статистики по короткой ссылке
+func TestGetURLStats(t *testing.T) {
+	mockStorage := storage.NewMockStorage()
+	cfg := &config.Config{}
+	handler := NewURLHandler(mockStorage, cfg)
+
+	// Предварительно сохраняем URL со статистикой
+	ctx := context.Background()
+	testURL := &models.URL{
+		ID:          1,
+		OriginalURL: "https://example.com",
+		ShortCode:   "stats123",
+		ClickCount:  15,
+	}
+	err := mockStorage.CreateURL(ctx, testURL)
+	if err != nil {
+		t.Fatalf("Failed to create test URL: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.Default()
+	router.GET("/api/v1/urls/:shortCode/stats", handler.GetURLStats)
+
+	req, _ := http.NewRequest("GET", "/api/v1/urls/stats123/stats", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Должны получить 200 OK
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
+	}
+
+	// Парсим JSON
+	var stats models.URLStats
+	if err := json.Unmarshal(w.Body.Bytes(), &stats); err != nil {
+		t.Fatalf("Fail to parse stats response: %v", err)
+	}
+
+	// Проверяем данные статистики
+	if stats.ShortCode != "stats123" {
+		t.Errorf("Expected short code 'stats123', got '%s'", stats.ShortCode)
+	}
+	if stats.OriginalURL != "https://example.com" {
+		t.Errorf("Expected original URL 'https://example.com', got '%s'", stats.OriginalURL)
+	}
+	if stats.ClickCount != 15 {
+		t.Errorf("Expected click count 15, got %d", stats.ClickCount)
+	}
+}
+
+// TestGetURLStatsNotFound тестируем получение статистики для несуществующей ссылки
+func TestGetURLStatsNotFound(t *testing.T) {
+	mockStorage := storage.NewMockStorage()
+	cfg := &config.Config{}
+	handler := NewURLHandler(mockStorage, cfg)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.Default()
+	router.GET("/api/v1/urls/:shortCode/stats", handler.GetURLStats)
+
+	req, _ := http.NewRequest("GET", "/api/v1/urls/nonexistent/stats", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	// Должны получить 404 Not Found
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404 for non-existent stats, got %d", w.Code)
+	}
+}
