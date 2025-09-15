@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/drerr0r/url-shortner/internal/models"
+	"github.com/drerr0r/url-shortener/internal/models"
 )
 
 // MockStorage - имитация хранилища данных для тестирования

@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/drerr0r/url-shortner/internal/config"
-	"github.com/drerr0r/url-shortner/internal/handlers"
-	"github.com/drerr0r/url-shortner/internal/middleware"
-	"github.com/drerr0r/url-shortner/internal/storage"
+	"github.com/drerr0r/url-shortener/internal/config"
+	"github.com/drerr0r/url-shortener/internal/handlers"
+	"github.com/drerr0r/url-shortener/internal/middleware"
+	"github.com/drerr0r/url-shortener/internal/storage"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,9 +23,16 @@ func main() {
 	// Загружаем конфигурацию
 	cfg := config.Load()
 
+	fmt.Printf("Server Port: '%s'\n", cfg.Server.Port)
+	fmt.Printf("Database config: %s@%s:%s/%s\n",
+		cfg.Database.User,
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.Name)
+
 	// Иннициализируем логгер
 	// (можно добавить настройку zerolog или другого логгера)
-	dsn := fmt.Sprintf("host=%s port=%s iser=%s password=%s dbname=%s sslmode=%s",
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Database.Host,
 		cfg.Database.Port,
 		cfg.Database.User,

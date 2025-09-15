@@ -1,79 +1,67 @@
 version: '3.8'
 
 services:
-  # Основные приложения
+  # Основное приложение
   app:
     build: .
     ports:
       - "8080:8080"
     environment:
-        - SERVER_PORT=8080
-        - DB_HOST=postgres
-        - DB_PORT=5432
-        - DB_NAME=urlshortner
-        - DB_USER=postgres
-        - DB_PASSWORD=password
-        - APP_BASE_URL=http://localhost:8080
+      - SERVER_PORT=8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=urlshortener
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - APP_BASE_URL=http://localhost:8080
     depends_on:
-        - postgres
-        - redis
+      - postgres
     restart: unless-stopped
-    networks:
-        - app-network 
 
+  # PostgreSQL база данных
   postgres:
-      image: postgres:15-alpine
-      environment:
-        - POSTGRES_DB=urlshortner
-        - POSTGRES_USER=postgres
-        - POSTGRES_PASSWORD=password
-      ports:
-        - "5432:5432"
-      volumes:
-        - postgres_data:/var/lib/postgresql/data
-        - ./migrations:/docker-entrypoint-initdb.d
-      networks:
-        -app-network:
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready - U postgres"]
-        interval: 5s
-        timeout: 5s
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=urlshortener
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-    # Redis для кэширования (может пригодиться в будущем)
+  # Redis для кэширования
   redis:
-      image: redis:7-alpine
-      ports:
-        - "6379:6379"
-      volumes:
-        - redis_data:/data
-      networks:           
-        - app-network
-      restart: unless-stopped
-      healthcheck:
-        test: ["CMD", "redis-cli", "ping"]
-        interval: 5s
-        timeout: 5s
-        retries: 5
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-    # pgAdmin для управления БД (опцианально)
+  # pgAdmin для управления БД
   pgadmin:
-      image: dpage/pgadmin4
-      environment:
-        - PGADMIN_DEFAULT_EMAIL=admin@example.com
-        - PGADMIN_DEFAULT_PASSWORD=admin
-      ports:
-        - "5050:80"
-      depends_on:
-        - postgres
-      networks:
-        - app-network
-      restart: unless-stopped
-
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
 volumes:
   postgres_data:
   redis_data:
-
-networks:
-  app-network:
-    driver: brige

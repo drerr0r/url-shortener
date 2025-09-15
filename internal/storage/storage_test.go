@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/drerr0r/url-shortner/internal/models"
+	"github.com/drerr0r/url-shortener/internal/models"
 )
 
 // TestMockStorageCreateURL тестируем базовое создание ГКД - позитивный сценарий

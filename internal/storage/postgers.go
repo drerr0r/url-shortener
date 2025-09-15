@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/drerr0r/url-shortner/internal/models"
+	"github.com/drerr0r/url-shortener/internal/models"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq" // Драйвер PostgreSQL
 )

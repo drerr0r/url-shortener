@@ -46,7 +46,7 @@ func Load() *Config {
 	// Настройка базы данных
 	cfg.Database.Host = getEnv("DB_HOST", "localhost")
 	cfg.Database.Port = getEnv("DB_PORT", "5432")
-	cfg.Database.Name = getEnv("DB_NAME", "urlshortner")
+	cfg.Database.Name = getEnv("DB_NAME", "urlshortener")
 	cfg.Database.User = getEnv("DB_USER", "postgres")
 	cfg.Database.Password = getEnv("DB_PASSWORD", "password")
 	cfg.Database.SSLMode = getEnv("DB_SSLMODE", "disable")

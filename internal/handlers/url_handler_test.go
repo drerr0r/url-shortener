@@ -10,10 +10,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/drerr0r/url-shortner/internal/config"
+	"github.com/drerr0r/url-shortener/internal/config"
 
-	"github.com/drerr0r/url-shortner/internal/models"
-	"github.com/drerr0r/url-shortner/internal/storage"
+	"github.com/drerr0r/url-shortener/internal/models"
+	"github.com/drerr0r/url-shortener/internal/storage"
 	"github.com/gin-gonic/gin"
 )
 
