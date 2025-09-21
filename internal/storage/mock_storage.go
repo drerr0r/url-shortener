@@ -1,85 +1,77 @@
-// internal/storage/mock_storage.go
-
 package storage
 
 import (
-	"context"
-	"fmt"
-
 	"github.com/drerr0r/url-shortener/internal/models"
 )
 
-// MockStorage - имитация хранилища данных для тестирования
-// Вместо реальной базы данных используем [map] в памяти
-// Это позволяет тестировать ллгику без внешних зависимостей
+// MockStorage реализация Storage для тестов
 type MockStorage struct {
-	URLs map[string]*models.URL // Храним URL по их короткому коду
+	urls map[string]*models.URL
 }
 
-// NewMockStorage - создает новый экземпляр mock хранилища
-// Конструктор иннициализирует пустую [map] для хранения URL
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
-		URLs: make(map[string]*models.URL),
+		urls: make(map[string]*models.URL),
 	}
 }
 
-// CreateURL сохраняет URL память [map]
-// Имитирует поведение реального хранилища при создании записи
-func (m *MockStorage) CreateURL(ctx context.Context, url *models.URL) error {
-	// Проверяем не существует ли уже такой short code
-	// Это имитирует constraint violation в реальной БД
-	if _, exists := m.URLs[url.ShortCode]; exists {
-		return fmt.Errorf("short code already exists")
-	}
-	// Сохраняем URL в [map]
-	m.URLs[url.ShortCode] = url
+// GetURLCount возвращает количество URL (для тестов)
+func (m *MockStorage) GetURLCount() int {
+	return len(m.urls)
+}
+
+// GetAllURLs возвращает все URL (для тестов)
+func (m *MockStorage) GetAllURLs() map[string]*models.URL {
+	return m.urls
+}
+
+func (m *MockStorage) SaveURL(url *models.URL) error {
+	m.urls[url.ShortCode] = url
 	return nil
 }
 
-// GetURLByShortCode извлекает URL по short code из memory map
-// Возвращает ErrNotFound если URL не существует
-func (m *MockStorage) GetURLByShortCode(ctx context.Context, shortCode string) (*models.URL, error) {
-	url, exists := m.URLs[shortCode]
+func (m *MockStorage) GetURL(shortCode string) (*models.URL, error) {
+	url, exists := m.urls[shortCode]
 	if !exists {
-		return nil, ErrNotFound // Возвращаем стандартную ошибку "not found"
+		return nil, ErrNotFound
 	}
 	return url, nil
 }
 
-// IncrementClickCount увеличивает счетчик кликов для конкретного url
-// Ищем URL по ID и увеличиваем счетчик - имитация UPDATE запроса
-func (m *MockStorage) IncrementClickCount(ctx context.Context, id int64) error {
-	// Итерируем по всем URL чтобы найти по ID
-	// В реальной БД это был бы UPDATE с WHERE по id
-	for _, url := range m.URLs {
-		if url.ID == id {
-			url.ClickCount++
-			return nil
+func (m *MockStorage) GetURLByOriginal(originalURL string) (*models.URL, error) {
+	for _, url := range m.urls {
+		if url.OriginalURL == originalURL {
+			return url, nil
 		}
 	}
-	return ErrNotFound // Если URL с таким ID не найден
+	return nil, nil
 }
 
-// GetURLStats возвращает статистику по short code
-// Преобразуем модель URL в модель URLStats для ответа API
-func (m *MockStorage) GetURLStats(ctx context.Context, shortCode string) (*models.URLStats, error) {
-	url, exists := m.URLs[shortCode]
-	if !exists {
-		return nil, ErrNotFound
-	}
-
-	// Преобразуем URL в URLStats (только нужные поля для статистики)
-	return &models.URLStats{
-		ShortCode:   url.ShortCode,
-		OriginalURL: url.OriginalURL,
-		CreatedAt:   url.CreatedAt,
-		ClickCount:  url.ClickCount,
-	}, nil
+func (m *MockStorage) URLExists(shortCode string) (bool, error) {
+	_, exists := m.urls[shortCode]
+	return exists, nil
 }
 
-// Close заглушка для интерфейса - ничего не делает в mock
-// В реальном хранилище здесь бы закрывалось соединение с БД
-func (m *MockStorage) Close() error {
+func (m *MockStorage) DeleteURL(shortCode string) error {
+	delete(m.urls, shortCode)
 	return nil
+}
+
+func (m *MockStorage) GetURLs(limit, offset int) ([]*models.URL, error) {
+	var result []*models.URL
+	count := 0
+	for _, url := range m.urls {
+		if count >= offset {
+			result = append(result, url)
+		}
+		count++
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (m *MockStorage) GetURLsCount() (int, error) {
+	return len(m.urls), nil
 }

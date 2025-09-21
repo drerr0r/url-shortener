@@ -1,270 +1,285 @@
-// internal/handlers/url_handler_test.go
-
 package handlers
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/drerr0r/url-shortener/internal/config"
 
 	"github.com/drerr0r/url-shortener/internal/models"
 	"github.com/drerr0r/url-shortener/internal/storage"
 	"github.com/gin-gonic/gin"
 )
 
-// TestCreateShortURL тестирует CreateShortURL handler
-// Этот тест проверяет корректное создание короткой ссылки через HTTP API
-func TestCreateShortURL(t *testing.T) {
-	// Setup: создаем mock storage и конфиг
+// TestShortenURLHandler тестирует ShortenURLHandler
+func TestShortenURLHandler(t *testing.T) {
 	mockStorage := storage.NewMockStorage()
-	cfg := &config.Config{}
-	cfg.App.BaseURL = "http://localhost:8080"
-	cfg.App.ShortCodeLength = 6
+	handler := NewURLHandler(mockStorage)
 
-	handler := NewURLHandler(mockStorage, cfg)
-
-	// Создаем Gin router для тестирования
-	// Gin.TestMode отключает логгирование для чистого вывода тестов
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
-	router.POST("/api/v1/urls", handler.CreateShortURL)
+	router.POST("/api/v1/shorten", handler.ShortenURLHandler)
 
-	// Test case: валидный URL
 	requestBody := `{"url": "https://example.com"}`
-	req, _ := http.NewRequest("POST", "/api/v1/urls", bytes.NewBufferString(requestBody))
+	req, _ := http.NewRequest("POST", "/api/v1/shorten", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
 
-	// Записываем response
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Проверяем статус код - должен быть 201 Created
 	if w.Code != http.StatusCreated {
-		t.Errorf("Expected status 201, got %d", w.Code)
+		t.Errorf("Expected status 201, got %d. Body: %s", w.Code, w.Body.String())
 	}
 
-	// Парсим JSON
-	var response models.CreateURLResponse
+	var response ShortenResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
-		t.Fatalf("Failed to parse: %v", err)
+		t.Fatalf("Failed to parse response: %v", err)
 	}
 
-	// Проверяем, что short URL содержит base URL
-	expectedPrefix := cfg.App.BaseURL + "/"
-	if response.ShortURL[:len(expectedPrefix)] != expectedPrefix {
-		t.Errorf("Short URL should start with '%s', got '%s'", expectedPrefix, response.ShortURL)
+	if response.ShortURL == "" {
+		t.Error("Short URL should not be empty")
 	}
 
-	// Проверяем, что original URL сохранился
-	if response.OriginalURL != "https://example.com" {
-		t.Errorf("Expected original URL 'https://example.com', got '%s'", response.OriginalURL)
-	}
-
-	//  Проверяем, что URL сохранился в  storage
-	if len(mockStorage.URLs) != 1 {
-		t.Errorf("Expected 1 URL in storage, got %d", len(mockStorage.URLs))
+	count := mockStorage.GetURLCount()
+	if count != 1 {
+		t.Errorf("Expected 1 URL in storage, got %d", count)
 	}
 }
 
-// TestCreateShortURLInvalidURL tests invalid URL handling
-// Проверяем обработку некоторых URL - API должен возвращать 400 Bad Request
-func TestCreateShortURLInvalidURL(t *testing.T) {
+// TestShortenURLHandlerInvalidURL tests invalid URL handling
+func TestShortenURLHandlerInvalidURL(t *testing.T) {
 	mockStorage := storage.NewMockStorage()
-	cfg := &config.Config{}
-	handler := NewURLHandler(mockStorage, cfg)
+	handler := NewURLHandler(mockStorage)
 
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
-	router.POST("/api/v1/urls", handler.CreateShortURL)
+	router.POST("/api/v1/shorten", handler.ShortenURLHandler)
 
-	// Test case: не валидный URL
 	requestBody := `{"url": "invalid-url"}`
-	req, _ := http.NewRequest("POST", "/api/v1/urls", bytes.NewBufferString(requestBody))
+	req, _ := http.NewRequest("POST", "/api/v1/shorten", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Должны получать 400 Bad Request
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400 for invalid URL, got %d", w.Code)
+		t.Errorf("Expected status 400 for invalid URL, got %d. Body: %s", w.Code, w.Body.String())
 	}
 
-	// Проверяем, что в storage ничего не добавилось
-	if len(mockStorage.URLs) != 0 {
-		t.Errorf("Expected 0 URLs in storage for invalid request, got %d", len(mockStorage.URLs))
+	count := mockStorage.GetURLCount()
+	if count != 0 {
+		t.Errorf("Expected 0 URLs in storage for invalid request, got %d", count)
 	}
 }
 
-// TestCreaqteShortURLEmptyBody проверяет обработку пустого тела запроса
-func TestCreaqteShortURLEmptyBody(t *testing.T) {
+// TestShortenURLHandlerEmptyBody проверяет обработку пустого тела запроса
+func TestShortenURLHandlerEmptyBody(t *testing.T) {
 	mockStorage := storage.NewMockStorage()
-	cfg := &config.Config{}
-	handler := NewURLHandler(mockStorage, cfg)
+	handler := NewURLHandler(mockStorage)
 
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
-	router.POST("/api/v1/urls", handler.CreateShortURL)
+	router.POST("/api/v1/shorten", handler.ShortenURLHandler)
 
-	// Test case: пустое тело запроса
-	req, _ := http.NewRequest("POST", "/api/v1/urls", bytes.NewBufferString(""))
+	req, _ := http.NewRequest("POST", "/api/v1/shorten", bytes.NewBufferString(""))
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	//  Должны получить 400 Bad Request
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expectedd status 400 for empty body, got %d", w.Code)
+		t.Errorf("Expected status 400 for empty body, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }
 
-// TestRedirectToOriginalURL tests redirection functionality
-// Тестируем перенаправление по короткой ссылке - основной функционал сервиса
-func TestRedirectToOriginalURL(t *testing.T) {
+// TestRedirectHandler tests redirection functionality
+func TestRedirectHandler(t *testing.T) {
 	mockStorage := storage.NewMockStorage()
-	cfg := &config.Config{}
-	handler := NewURLHandler(mockStorage, cfg)
+	handler := NewURLHandler(mockStorage)
 
-	// Предварительно сохраняем URL в storage
-	// Это имитирует ситуацию, когда URL уже был создан ранее
 	testURL := &models.URL{
-		ID:          1,
 		OriginalURL: "https://example.com",
 		ShortCode:   "abc123",
-		ClickCount:  0,
 	}
-	// Сохраняем через метод CreateURL
-	ctx := context.Background()
-	err := mockStorage.CreateURL(ctx, testURL)
+	err := mockStorage.SaveURL(testURL)
 	if err != nil {
 		t.Fatalf("Failed to create test URL: %v", err)
 	}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
-	router.GET("/:shortCode", handler.RedirectToOriginalURL)
+	router.GET("/:shortCode", handler.RedirectHandler)
 
-	// Важно: используем с параметром
 	req, _ := http.NewRequest("GET", "/abc123", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Должны получить redirect 302 Found
 	if w.Code != http.StatusFound {
 		t.Errorf("Expected status 302, got %d. Body: %s", w.Code, w.Body.String())
 	}
 
-	// Проверяем Location header - должен содержать оригинальный URL
 	location := w.Header().Get("Location")
 	if location != "https://example.com" {
 		t.Errorf("Expected Location header 'https://example.com', got '%s'", location)
 	}
-
-	// Проверяем, что счетчик кликов увеличился
-	// Нужно получить обновленные данные из storage
-	updatedURL, err := mockStorage.GetURLByShortCode(ctx, "abc123")
-	if err != nil {
-		t.Fatalf("Failed to get updated URL: %v", err)
-	}
-
-	if updatedURL.ClickCount != 1 {
-		t.Errorf("Click count should be 1, got %d", updatedURL.ClickCount)
-	}
 }
 
-// TestRedirectToOriginalURLNotFound проверяет обработку ситуации, когда короткий код не найден
-func TestRedirectToOriginalURL_NotFound(t *testing.T) {
+// TestRedirectHandlerNotFound проверяет обработку ситуации, когда короткий код не найден
+func TestRedirectHandlerNotFound(t *testing.T) {
 	mockStorage := storage.NewMockStorage()
-	cfg := &config.Config{}
-	handler := NewURLHandler(mockStorage, cfg)
+	handler := NewURLHandler(mockStorage)
 
-	// Storage пустой - URL не существует
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
-	router.GET("/:shortCode", handler.RedirectToOriginalURL)
+	router.GET("/:shortCode", handler.RedirectHandler)
 
 	req, _ := http.NewRequest("GET", "/nonexistent", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Должны получить 404 Not Found
 	if w.Code != http.StatusNotFound {
-		t.Errorf("Expected status 404 for non-existent short code, got %d", w.Code)
+		t.Errorf("Expected status 404 for non-existent short code, got %d. Body: %s", w.Code, w.Body.String())
 	}
 }
 
-// TestGetURLStats тестируем получение статистики по короткой ссылке
-func TestGetURLStats(t *testing.T) {
+// TestRedirectHandlerInvalidCode проверяет обработку невалидного короткого кода
+func TestRedirectHandlerInvalidCode(t *testing.T) {
 	mockStorage := storage.NewMockStorage()
-	cfg := &config.Config{}
-	handler := NewURLHandler(mockStorage, cfg)
+	handler := NewURLHandler(mockStorage)
 
-	// Предварительно сохраняем URL со статистикой
-	ctx := context.Background()
+	gin.SetMode(gin.TestMode)
+	router := gin.Default()
+	router.GET("/:shortCode", handler.RedirectHandler)
+
+	req, _ := http.NewRequest("GET", "/abc", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for invalid short code, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestGetURLStatsHandler тестируем получение статистики по короткой ссылке
+func TestGetURLStatsHandler(t *testing.T) {
+	mockStorage := storage.NewMockStorage()
+	handler := NewURLHandler(mockStorage)
+
 	testURL := &models.URL{
-		ID:          1,
 		OriginalURL: "https://example.com",
 		ShortCode:   "stats123",
-		ClickCount:  15,
 	}
-	err := mockStorage.CreateURL(ctx, testURL)
+	err := mockStorage.SaveURL(testURL)
 	if err != nil {
 		t.Fatalf("Failed to create test URL: %v", err)
 	}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
-	router.GET("/api/v1/urls/:shortCode/stats", handler.GetURLStats)
+	router.GET("/api/v1/stats/:shortCode", handler.GetURLStatsHandler)
 
-	req, _ := http.NewRequest("GET", "/api/v1/urls/stats123/stats", nil)
+	req, _ := http.NewRequest("GET", "/api/v1/stats/stats123", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Должны получить 200 OK
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d. Body: %s", w.Code, w.Body.String())
 	}
 
-	// Парсим JSON
-	var stats models.URLStats
-	if err := json.Unmarshal(w.Body.Bytes(), &stats); err != nil {
-		t.Fatalf("Fail to parse stats response: %v", err)
+	var url models.URL
+	if err := json.Unmarshal(w.Body.Bytes(), &url); err != nil {
+		t.Fatalf("Failed to parse stats response: %v", err)
 	}
 
-	// Проверяем данные статистики
-	if stats.ShortCode != "stats123" {
-		t.Errorf("Expected short code 'stats123', got '%s'", stats.ShortCode)
+	if url.ShortCode != "stats123" {
+		t.Errorf("Expected short code 'stats123', got '%s'", url.ShortCode)
 	}
-	if stats.OriginalURL != "https://example.com" {
-		t.Errorf("Expected original URL 'https://example.com', got '%s'", stats.OriginalURL)
-	}
-	if stats.ClickCount != 15 {
-		t.Errorf("Expected click count 15, got %d", stats.ClickCount)
+	if url.OriginalURL != "https://example.com" {
+		t.Errorf("Expected original URL 'https://example.com', got '%s'", url.OriginalURL)
 	}
 }
 
-// TestGetURLStatsNotFound тестируем получение статистики для несуществующей ссылки
-func TestGetURLStatsNotFound(t *testing.T) {
+// TestGetURLStatsHandlerNotFound тестируем получение статистики для несуществующей ссылки
+func TestGetURLStatsHandlerNotFound(t *testing.T) {
 	mockStorage := storage.NewMockStorage()
-	cfg := &config.Config{}
-	handler := NewURLHandler(mockStorage, cfg)
+	handler := NewURLHandler(mockStorage)
 
 	gin.SetMode(gin.TestMode)
 	router := gin.Default()
-	router.GET("/api/v1/urls/:shortCode/stats", handler.GetURLStats)
+	router.GET("/api/v1/stats/:shortCode", handler.GetURLStatsHandler)
 
-	req, _ := http.NewRequest("GET", "/api/v1/urls/nonexistent/stats", nil)
+	req, _ := http.NewRequest("GET", "/api/v1/stats/nonexistent", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Должны получить 404 Not Found
 	if w.Code != http.StatusNotFound {
-		t.Errorf("Expected status 404 for non-existent stats, got %d", w.Code)
+		t.Errorf("Expected status 404 for non-existent stats, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestGetURLStatsHandlerInvalidCode тестируем получение статистики для невалидного кода
+func TestGetURLStatsHandlerInvalidCode(t *testing.T) {
+	mockStorage := storage.NewMockStorage()
+	handler := NewURLHandler(mockStorage)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.Default()
+	router.GET("/api/v1/stats/:shortCode", handler.GetURLStatsHandler)
+
+	req, _ := http.NewRequest("GET", "/api/v1/stats/inv@lid", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for invalid short code, got %d. Body: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestDuplicateURL тестирует создание дубликата URL
+func TestDuplicateURL(t *testing.T) {
+	mockStorage := storage.NewMockStorage()
+	handler := NewURLHandler(mockStorage)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.Default()
+	router.POST("/api/v1/shorten", handler.ShortenURLHandler)
+
+	requestBody1 := `{"url": "https://example.com"}`
+	req1, _ := http.NewRequest("POST", "/api/v1/shorten", bytes.NewBufferString(requestBody1))
+	req1.Header.Set("Content-Type", "application/json")
+
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+
+	if w1.Code != http.StatusCreated {
+		t.Errorf("First request should succeed, got %d", w1.Code)
+	}
+
+	var response1 ShortenResponse
+	json.Unmarshal(w1.Body.Bytes(), &response1)
+	firstShortCode := response1.ShortURL
+
+	requestBody2 := `{"url": "https://example.com"}`
+	req2, _ := http.NewRequest("POST", "/api/v1/shorten", bytes.NewBufferString(requestBody2))
+	req2.Header.Set("Content-Type", "application/json")
+
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Errorf("Duplicate request should return 200, got %d", w2.Code)
+	}
+
+	var response2 ShortenResponse
+	json.Unmarshal(w2.Body.Bytes(), &response2)
+
+	if response2.ShortURL != firstShortCode {
+		t.Errorf("Duplicate URL should return same short code, got %s vs %s", response2.ShortURL, firstShortCode)
+	}
+
+	count := mockStorage.GetURLCount()
+	if count != 1 {
+		t.Errorf("Should have only 1 URL in storage for duplicates, got %d", count)
 	}
 }

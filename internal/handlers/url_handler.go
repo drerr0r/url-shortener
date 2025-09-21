@@ -1,146 +1,131 @@
-// internal/handlers/url_handler.go
-
 package handlers
 
 import (
 	"net/http"
 	"net/url"
 
-	"github.com/drerr0r/url-shortener/internal/config"
 	"github.com/drerr0r/url-shortener/internal/models"
 	"github.com/drerr0r/url-shortener/internal/storage"
 	"github.com/drerr0r/url-shortener/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
-// URLHandler обрабатывает HTTP запросы связанные с сокращением URL
 type URLHandler struct {
 	storage storage.Storage
-	cfg     *config.Config
 }
 
-// NewURLHandler создает новый экземпляр URLHandler
-// storage: интерфейс для работы с хранилищем данных
-// cfg: конфигурация приложения
-func NewURLHandler(storage storage.Storage, cfg *config.Config) *URLHandler {
-	return &URLHandler{
-		storage: storage,
-		cfg:     cfg,
-	}
+func NewURLHandler(storage storage.Storage) *URLHandler {
+	return &URLHandler{storage: storage}
 }
 
-// CreateShortURL обрабатывает POST запрос для создания сокращенной ссылки
-// @Summary Создать сокращенную ссылку
-// @Description Принимает оригинальный URL и возвращает сокращенную версию
-// @Tags urls
-// @Accept json
-// @Produce json
-// @Param request body models.CreateURLRequest true "URL для сокращения"
-// @Success  201 {object} models.CreateURLResponse
-// @Failure 400 {object} map[string]string "Не верный запрос"
-// @Failure 500 {object} map[string]string "Внутренняя ошибка сервера"
-// @Router /api/v1/urls [post]
-func (h *URLHandler) CreateShortURL(c *gin.Context) {
-	var req models.CreateURLRequest
+type ShortenRequest struct {
+	URL string `json:"url" binding:"required"`
+}
 
-	// Парсим JSON тело запроса
+type ShortenResponse struct {
+	ShortURL string `json:"short_url"`
+}
+
+// ShortenURLHandler обрабатывает запрос на сокращение URL
+func (h *URLHandler) ShortenURLHandler(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1024)
+
+	var req ShortenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 		return
 	}
 
-	// Проверяем что URL валидный
-	if _, err := url.ParseRequestURI(req.URL); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid URL"})
+	if !isValidURL(req.URL) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid URL format"})
 		return
 	}
 
-	// Генерируем уникальный короткий код
-	shortCode, err := utils.GenerateRandomString(h.cfg.App.ShortCodeLength)
+	existingURL, err := h.storage.GetURLByOriginal(req.URL)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to gen rate short code"})
+		log.Error().Err(err).Msg("Failed to check existing URL")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
 
-	// Создаем обьект URL для сохранения в БД
-	url := &models.URL{
+	if existingURL != nil {
+		c.JSON(http.StatusOK, ShortenResponse{ShortURL: existingURL.ShortCode})
+		return
+	}
+
+	shortCode := utils.GenerateRandomString(6)
+
+	if !utils.IsValidShortCode(shortCode) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate valid short code"})
+		return
+	}
+
+	urlModel := &models.URL{
 		OriginalURL: req.URL,
 		ShortCode:   shortCode,
 	}
 
-	// Сохраняем в базу данных
-	ctx := c.Request.Context()
-	if err := h.storage.CreateURL(ctx, url); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create short URL"})
+	if err := h.storage.SaveURL(urlModel); err != nil {
+		log.Error().Err(err).Msg("Failed to save URL")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save URL"})
 		return
 	}
 
-	// Формируем ответ
-	response := models.CreateURLResponse{
-		ShortURL:    h.cfg.App.BaseURL + "/" + shortCode,
-		OriginalURL: req.URL,
-	}
-
-	c.JSON(http.StatusCreated, response)
-
+	c.JSON(http.StatusCreated, ShortenResponse{ShortURL: shortCode})
 }
 
-// RedirectToOriginalURL обрабатывает GRT запрос и перенаправляет на оригинальный URL
-// @Summary Перенаправление по короткой ссылке
-// @Description Перенаправляет пользователя на оригинальный URL по короткому коду
-// @Tags urls
-// @Param shortCode path string true "Короткий код ссылки"
-// @Success 302 "Перенаправление на оригинальный URL"
-// @Failure 404 {object} map[string]string "Ссылка не найдена"
-// @Failure 500 {object} map[string]string "Внутренняя ошибка сервера"
-// @Router /{shortCode} [get]
-func (h *URLHandler) RedirectToOriginalURL(c *gin.Context) {
+// 🟡 ИСПРАВЛЕНО: Переименовали метод для соответствия вызовам в main.go
+// RedirectHandler обрабатывает перенаправление по короткому URL
+func (h *URLHandler) RedirectHandler(c *gin.Context) {
 	shortCode := c.Param("shortCode")
 
-	// Ищем URL в базе данных
-	ctx := c.Request.Context()
-	url, err := h.storage.GetURLByShortCode(ctx, shortCode)
-	if err != nil {
-		if err == storage.ErrNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Short URL not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+	if !utils.IsValidShortCode(shortCode) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid short code format"})
 		return
 	}
 
-	// Увеличиваем счетчик кликов
-	if err := h.storage.IncrementClickCount(ctx, url.ID); err != nil {
-		// Логируем ошибку, но не прерываем перенаправление
-		// Можно добавить логирование через log.Error()
+	url, err := h.storage.GetURL(shortCode)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
+		return
 	}
 
-	// Перенаправляем на оригинальный URL
 	c.Redirect(http.StatusFound, url.OriginalURL)
 }
 
-// GetURLStats возвращает статистику по короткой ссылке
-// @Summary Получить статистику ссылки
-// @Description Возвращает информацию о количестве кликов и дате создания
-// @Tags urls
-// @Produce json
-// @Param shortCode path string true "Коротки код ссылки"
-// @Success 200 {object} models.URLStats
-// @Failure 404 {object} map[string]string "Ссылка не найдена"
-// @Failure 500 {object} map[string]string "Внутренняя ошибка сервера"
-// @Router /api/v1/urls/{shortCode}/stats [get]
-func (h *URLHandler) GetURLStats(c *gin.Context) {
+// 🟡 ИСПРАВЛЕНО: Переименовали метод для соответствия вызовам в main.go
+// GetURLStatsHandler возвращает статистику по URL
+func (h *URLHandler) GetURLStatsHandler(c *gin.Context) {
 	shortCode := c.Param("shortCode")
 
-	ctx := c.Request.Context()
-	stats, err := h.storage.GetURLStats(ctx, shortCode)
-	if err != nil {
-		if err == storage.ErrNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Short URL not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+	if !utils.IsValidShortCode(shortCode) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid short code format"})
 		return
 	}
-	c.JSON(http.StatusOK, stats)
+
+	url, err := h.storage.GetURL(shortCode)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, url)
+}
+
+func isValidURL(urlStr string) bool {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return false
+	}
+
+	if u.Scheme == "" || u.Host == "" {
+		return false
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+
+	return true
 }

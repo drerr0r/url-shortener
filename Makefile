@@ -25,14 +25,16 @@ clean: ## Очистить скомпилированные файлы
 	$(GO) clean
 	rm -f $(BINARY_NAME)
 
+# 🟡 ИСПРАВЛЕНО: Использование переменной окружения для DB_URL
+# БЫЛО: goose -dir $(MIGRATIONS_DIR) postgres "postgres://postgres:password@localhost:5432/urlshortener?sslmode=disable" up
 migrate-up: ## Применить миграции базы данных
-	goose -dir $(MIGRATIONS_DIR) postgres "postgres://postgres:password@localhost:5432/urlshortener?sslmode=disable" up
+	goose -dir $(MIGRATIONS_DIR) postgres "$$DB_URL" up
 
 migrate-down: ## Откатить последнюю миграцию
-	goose -dir $(MIGRATIONS_DIR) postgres "postgres://postgres:password@localhost:5432/urlshortener?sslmode=disable" down
+	goose -dir $(MIGRATIONS_DIR) postgres "$$DB_URL" down
 
 migrate-status: ## Показать статус миграций
-	goose -dir $(MIGRATIONS_DIR) postgres "postgres://postgres:password@localhost:5432/urlshortener?sslmode=disable" status
+	goose -dir $(MIGRATIONS_DIR) postgres "$$DB_URL" status
 
 docker-up: ## Запустить контейнеры Docker
 	$(DOCKER_COMPOSE) up -d

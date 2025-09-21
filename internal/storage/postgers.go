@@ -1,122 +1,78 @@
-// internal/storage/postgres.go
-
 package storage
 
 import (
-	"context"
 	"database/sql"
-	"fmt"
-	"time"
 
 	"github.com/drerr0r/url-shortener/internal/models"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq" // Драйвер PostgreSQL
+	_ "github.com/lib/pq"
 )
 
-// PostgresStorage реализация Storage для PostgreSQL
 type PostgresStorage struct {
 	db *sqlx.DB
 }
 
-// NewPostgresStorage создает новый экземпляр PostgresStorage
-func NewPostgresStorage(dsn string) (*PostgresStorage, error) {
-	// Подключаемся к базе данных
-	db, err := sqlx.Connect("postgres", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	// Проверяем соединение
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
-	return &PostgresStorage{db: db}, nil
+func NewPostgresStorage(db *sqlx.DB) *PostgresStorage {
+	return &PostgresStorage{db: db}
 }
 
-// CreateURL сохраняет новую сокращенную ссылку в базе данных
-func (s *PostgresStorage) CreateURL(ctx context.Context, url *models.URL) error {
-	query := `
-		INSERT INTO urls (original_url, short_code, created_at, click_count)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id
-		`
-
-	// выполняем запрос с возвратом ID
-	err := s.db.QueryRowContext(ctx, query,
-		url.OriginalURL,
-		url.ShortCode,
-		time.Now(),
-		0,
-	).Scan(&url.ID)
-
-	if err != nil {
-		return fmt.Errorf("failed to create URL: %w", err)
-	}
-	return nil
+// SaveURL сохраняет URL в базу данных
+func (s *PostgresStorage) SaveURL(url *models.URL) error {
+	query := `INSERT INTO urls (original_url, short_code) VALUES ($1, $2)`
+	_, err := s.db.Exec(query, url.OriginalURL, url.ShortCode)
+	return err
 }
 
-// GetURLByShortCode возвращает URL по короткому коду
-func (s *PostgresStorage) GetURLByShortCode(ctx context.Context, shortCode string) (*models.URL, error) {
+// GetURL возвращает URL по короткому коду
+func (s *PostgresStorage) GetURL(shortCode string) (*models.URL, error) {
+	query := `SELECT id, original_url, short_code, created_at FROM urls WHERE short_code = $1`
 	var url models.URL
-
-	query := `SELECT id, original_url, short_code, created_at, click_count FROM urls WHERE short_code = $1`
-
-	err := s.db.GetContext(ctx, &url, query, shortCode)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("failed to get URL: %w", err)
+	err := s.db.Get(&url, query, shortCode)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
 	}
-	return &url, nil
+	return &url, err
 }
 
-// IncrementClickCount увеличивает счетчик кликов
-func (s *PostgresStorage) IncrementClickCount(ctx context.Context, id int64) error {
-	query := `UPDATE urls SET click_count = click_count + 1 WHERE id = $1`
-
-	result, err := s.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("failed to increment click count: %w", err)
+// 🟡 ДОБАВЛЕНО: Реализация отсутствующего метода
+// GetURLByOriginal возвращает URL по оригинальному URL
+func (s *PostgresStorage) GetURLByOriginal(originalURL string) (*models.URL, error) {
+	query := `SELECT id, original_url, short_code, created_at FROM urls WHERE original_url = $1`
+	var url models.URL
+	err := s.db.Get(&url, query, originalURL)
+	if err == sql.ErrNoRows {
+		return nil, nil
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return &url, err
 }
 
-// GetURLStats возвращает статистику по ссылке
-func (s *PostgresStorage) GetURLStats(ctx context.Context, shortCode string) (*models.URLStats, error) {
-	var stats models.URLStats
-
-	query := `
-	SELECT short_code, original_url, created_at, click_count
-	FROM urls
-	WHERE short_code = $1
-	`
-
-	err := s.db.GetContext(ctx, &stats, query, shortCode)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("failed to get URL stats: %w", err)
-	}
-	return &stats, nil
+// URLExists проверяет существование URL
+func (s *PostgresStorage) URLExists(shortCode string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM urls WHERE short_code = $1)`
+	var exists bool
+	err := s.db.Get(&exists, query, shortCode)
+	return exists, err
 }
 
-// Close закрывает соединение с базой
-func (s *PostgresStorage) Close() error {
-	return s.db.Close()
+// DeleteURL удаляет URL по короткому коду
+func (s *PostgresStorage) DeleteURL(shortCode string) error {
+	query := `DELETE FROM urls WHERE short_code = $1`
+	_, err := s.db.Exec(query, shortCode)
+	return err
 }
 
-// Ошибки хранилища
-var (
-	ErrNotFound = fmt.Errorf("not found")
-)
+// GetURLs возвращает все URL с пагинацией
+func (s *PostgresStorage) GetURLs(limit, offset int) ([]*models.URL, error) {
+	query := `SELECT id, original_url, short_code, created_at FROM urls ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	var urls []*models.URL
+	err := s.db.Select(&urls, query, limit, offset)
+	return urls, err
+}
+
+// GetURLsCount возвращает количество URL в базе
+func (s *PostgresStorage) GetURLsCount() (int, error) {
+	query := `SELECT COUNT(*) FROM urls`
+	var count int
+	err := s.db.Get(&count, query)
+	return count, err
+}

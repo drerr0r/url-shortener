@@ -1,67 +1,72 @@
 version: '3.8'
 
 services:
-  # Основное приложение
   app:
     build: .
     ports:
       - "8080:8080"
     environment:
-      - SERVER_PORT=8080
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=urlshortener
-      - DB_USER=postgres
-      - DB_PASSWORD=password
-      - APP_BASE_URL=http://localhost:8080
+      SERVER_PORT: 8080
+      # 🟡 ИСПРАВЛЕНО: Добавлен пароль в connection string
+      # БЫЛО: DB_URL: postgres://postgres@postgres:5432/urlshortener
+      DB_URL: postgres://postgres:password@postgres:5432/urlshortener?sslmode=disable
+      APP_BASE_URL: http://localhost:8080
+    volumes:
+      - ./migrations:/app/migrations  # Изменен путь к миграциям
     depends_on:
       - postgres
     restart: unless-stopped
+    # 🟡 ДОБАВЛЕНО: Healthcheck для улучшения надежности
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
-  # PostgreSQL база данных
   postgres:
     image: postgres:15-alpine
     environment:
-      - POSTGRES_DB=urlshortener
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
+      POSTGRES_DB: urlshortener
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      LC_ALL: C.UTF-8
+      LANG: en_US.UTF-8
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
-    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  # Redis для кэширования
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  # pgAdmin для управления БД
   pgadmin:
     image: dpage/pgadmin4
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@example.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "5050:80"
     depends_on:
       - postgres
     restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

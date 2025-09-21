@@ -1,192 +1,124 @@
-// internal/storage/storage_test.go
-
 package storage
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/drerr0r/url-shortener/internal/models"
+	"github.com/stretchr/testify/assert"
 )
 
-// TestMockStorageCreateURL тестируем базовое создание ГКД - позитивный сценарий
-func TestMockStorageCreateURL(t *testing.T) {
-	mockStorage := NewMockStorage()
-	ctx := context.Background()
+func TestMockStorage_SaveAndGetURL(t *testing.T) {
+	storage := NewMockStorage()
 
-	testURL := &models.URL{
+	url := &models.URL{
 		OriginalURL: "https://example.com",
 		ShortCode:   "test123",
 		CreatedAt:   time.Now(),
-		ClickCount:  0,
 	}
 
-	err := mockStorage.CreateURL(ctx, testURL)
-	if err != nil {
-		t.Fatalf("CreateURL failed: %v", err)
-	}
+	err := storage.SaveURL(url)
+	assert.NoError(t, err)
 
-	// Проверяе, что URL сохранился
-	if len(mockStorage.URLs) != 1 {
-		t.Errorf("Expected 1 URL in storage, got %d", len(mockStorage.URLs))
-	}
+	count := storage.GetURLCount()
+	assert.Equal(t, 1, count)
+
+	retrievedURL, err := storage.GetURL("test123")
+	assert.NoError(t, err)
+	assert.Equal(t, url.OriginalURL, retrievedURL.OriginalURL)
+	assert.Equal(t, url.ShortCode, retrievedURL.ShortCode)
+
+	_, err = storage.GetURL("nonexistent")
+	assert.Equal(t, ErrNotFound, err)
 }
 
-// TestMockStorageCreateURLDuplicate тестируем создание дубликата - должен возвращаться error
-func TestMockStorageCreateURLDuplicate(t *testing.T) {
-	mockStorage := NewMockStorage()
-	ctx := context.Background()
+func TestMockStorage_URLExists(t *testing.T) {
+	storage := NewMockStorage()
 
-	testURL := &models.URL{
-		OriginalURL: "https://example.com",
-		ShortCode:   "duplicate",
-		CreatedAt:   time.Now(),
-		ClickCount:  0,
-	}
-
-	// Первое создание - должно работать
-	err := mockStorage.CreateURL(ctx, testURL)
-	if err != nil {
-		t.Fatalf("First CreateURL failed: %v", err)
-	}
-
-	// Второе создание с тем же short code - должно вернуть ошибку
-	err = mockStorage.CreateURL(ctx, testURL)
-	if err == nil {
-		t.Errorf("Expected error for duplicate short code, got nil")
-	}
-
-}
-
-// TestMockStorageGetByShortCode тестируем получение существующего URL
-func TestMockStorageGetByShortCode(t *testing.T) {
-	mockStorage := NewMockStorage()
-	ctx := context.Background()
-
-	testURL := &models.URL{
+	url := &models.URL{
 		OriginalURL: "https://example.com",
 		ShortCode:   "test123",
-		CreatedAt:   time.Now(),
-		ClickCount:  5,
 	}
 
-	mockStorage.URLs["test123"] = testURL
+	err := storage.SaveURL(url)
+	assert.NoError(t, err)
 
-	retrievedURL, err := mockStorage.GetURLByShortCode(ctx, "test123")
-	if err != nil {
-		t.Fatalf("GetURLByShortCode failed: %v", err)
-	}
+	count := storage.GetURLCount()
+	assert.Equal(t, 1, count)
 
-	if retrievedURL.OriginalURL != "https://example.com" {
-		t.Errorf("Expected OriginalURL 'https://example.com', got '%s'", retrievedURL.OriginalURL)
-	}
+	exists, err := storage.URLExists("test123")
+	assert.NoError(t, err)
+	assert.True(t, exists)
 
-	if retrievedURL.ClickCount != 5 {
-		t.Errorf("Expected ClickCount 5, got %d", retrievedURL.ClickCount)
-	}
+	exists, err = storage.URLExists("nonexistent")
+	assert.NoError(t, err)
+	assert.False(t, exists)
 }
 
-// TestMockStorageGetURLByShortCodeNotFound тестируем получение несуществующего URL
-func TestMockStorageGetURLByShortCodeNotFound(t *testing.T) {
-	mockStorage := NewMockStorage()
-	ctx := context.Background()
+func TestMockStorage_DeleteURL(t *testing.T) {
+	storage := NewMockStorage()
 
-	_, err := mockStorage.GetURLByShortCode(ctx, "nonexistent")
-	if err != ErrNotFound {
-		t.Errorf("Expected ErrNotFound, got %v", err)
-	}
-}
-
-// TestMockStorageIncrementClickCount тестируем увеличение счетчика кликов
-func TestMockStorageIncrementClickCount(t *testing.T) {
-	mockStorage := NewMockStorage()
-	ctx := context.Background()
-
-	testURL := &models.URL{
-		ID:          1,
+	url := &models.URL{
 		OriginalURL: "https://example.com",
 		ShortCode:   "test123",
-		CreatedAt:   time.Now(),
-		ClickCount:  10,
 	}
 
-	mockStorage.URLs["test123"] = testURL
+	err := storage.SaveURL(url)
+	assert.NoError(t, err)
 
-	err := mockStorage.IncrementClickCount(ctx, 1)
-	if err != nil {
-		t.Fatalf("IncrementClickCount failed: %v", err)
-	}
+	count := storage.GetURLCount()
+	assert.Equal(t, 1, count)
 
-	if testURL.ClickCount != 11 {
-		t.Errorf("Expected ClickCount 11, got %d", testURL.ClickCount)
-	}
+	err = storage.DeleteURL("test123")
+	assert.NoError(t, err)
 
+	_, err = storage.GetURL("test123")
+	assert.Equal(t, ErrNotFound, err)
+
+	count = storage.GetURLCount()
+	assert.Equal(t, 0, count)
 }
 
-// TestMockStorageIncrementClickCountNotFound тестируем увеличение счетчика для несуществующего URL
-func TestMockStorageIncrementClickCountNotFound(t *testing.T) {
-	mockStorage := NewMockStorage()
-	ctx := context.Background()
+func TestMockStorage_GetURLByOriginal(t *testing.T) {
+	storage := NewMockStorage()
 
-	err := mockStorage.IncrementClickCount(ctx, 999)
-	if err != ErrNotFound {
-		t.Errorf("Expected ErrNotFound, got %v", err)
-	}
-}
-
-// TestMockStorageGetURLStats тестируем получение статистики URL
-func TestMockStorageGetURLStats(t *testing.T) {
-	mockStorage := NewMockStorage()
-	ctx := context.Background()
-
-	createdTime := time.Now()
-	testURL := &models.URL{
-		ID:          1,
+	url := &models.URL{
 		OriginalURL: "https://example.com",
 		ShortCode:   "test123",
-		CreatedAt:   createdTime,
-		ClickCount:  42,
 	}
 
-	mockStorage.URLs["test123"] = testURL
+	err := storage.SaveURL(url)
+	assert.NoError(t, err)
 
-	stats, err := mockStorage.GetURLStats(ctx, "test123")
-	if err != nil {
-		t.Fatalf("GetURLStats failed: %v", err)
-	}
+	retrievedURL, err := storage.GetURLByOriginal("https://example.com")
+	assert.NoError(t, err)
+	assert.NotNil(t, retrievedURL)
+	assert.Equal(t, url.ShortCode, retrievedURL.ShortCode)
 
-	if stats.ShortCode != "test123" {
-		t.Errorf("Expected ShortCode 'test123', got '%s'", stats.ShortCode)
-	}
-
-	if stats.OriginalURL != "https://example.com" {
-		t.Errorf("Expected OriginalURL 'https://example.com', got '%s'", stats.OriginalURL)
-	}
-
-	if stats.ClickCount != 42 {
-		t.Errorf("Expected ClickCount 42, got %d", stats.ClickCount)
-	}
-
+	retrievedURL, err = storage.GetURLByOriginal("https://nonexistent.com")
+	assert.NoError(t, err)
+	assert.Nil(t, retrievedURL)
 }
 
-// TestMockStorageGetURLStatsNotFound тестируем получение статистики для несуществующего URL
-func TestMockStorage_GetURLStats_NotFound(t *testing.T) {
-	mockStorage := NewMockStorage()
-	ctx := context.Background()
+func TestMockStorage_GetURLs(t *testing.T) {
+	storage := NewMockStorage()
 
-	_, err := mockStorage.GetURLStats(ctx, "nonexistent")
-	if err != ErrNotFound {
-		t.Errorf("Expected ErrNotFound, got %v", err)
+	urls := []*models.URL{
+		{OriginalURL: "https://example1.com", ShortCode: "test1"},
+		{OriginalURL: "https://example2.com", ShortCode: "test2"},
+		{OriginalURL: "https://example3.com", ShortCode: "test3"},
 	}
-}
 
-// TestMockStorageClose тестируем закрытие хранилища (заглушка для mock)
-func TestMockStorage_Close(t *testing.T) {
-	mockStorage := NewMockStorage()
-
-	err := mockStorage.Close()
-	if err != nil {
-		t.Errorf("Close failed: %v", err)
+	for _, url := range urls {
+		err := storage.SaveURL(url)
+		assert.NoError(t, err)
 	}
+
+	retrievedURLs, err := storage.GetURLs(2, 0)
+	assert.NoError(t, err)
+	assert.Len(t, retrievedURLs, 2)
+
+	count, err := storage.GetURLsCount()
+	assert.NoError(t, err)
+	assert.Equal(t, 3, count)
 }

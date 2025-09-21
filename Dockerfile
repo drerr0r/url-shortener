@@ -4,8 +4,9 @@ FROM golang:1.25.1-alpine AS builder
 # Устанавливаем зависимости для сборки
 RUN apk add --no-cache git make
 
-# Устанавливаем goose для миграций
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+# 🟡 ИСПРАВЛЕНО: Убрана установка goose из production образа
+# Миграции должны выполняться отдельно во время деплоя, а не включаться в runtime образ
+# БЫЛО: RUN go install github.com/pressly/goose/v3/cmd/goose@latest
 
 # Рабочая директория
 WORKDIR /app
@@ -39,9 +40,11 @@ WORKDIR /app
 
 # Копируем бинарник из builder stage
 COPY --from=builder /app/url-shortener . 
-COPY --from=builder /go/bin/goose /usr/local/bin/goose 
 
-# Копируем миграции
+# 🟡 ИСПРАВЛЕНО: Убрано копирование goose из production образа
+# БЫЛО: COPY --from=builder /go/bin/goose /usr/local/bin/goose 
+
+# Копируем миграции (только для reference, не для выполнения)
 COPY --from=builder /app/migrations ./migrations/  
 
 # Экспонируем порт
