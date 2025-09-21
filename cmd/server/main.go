@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -11,7 +12,46 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	"github.com/pressly/goose/v3" // 🔴 ДОБАВЛЕНО: Импорт goose для миграций
 )
+
+// 🔴 ДОБАВЛЕНО: Функция для применения миграций
+// applyMigrations автоматически применяет миграции базы данных при запуске
+func applyMigrations(db *sqlx.DB) error {
+	// Проверяем существование таблицы urls
+	var tableExists bool
+	err := db.QueryRow(`
+		SELECT EXISTS (
+			SELECT FROM information_schema.tables 
+			WHERE table_schema = 'public' 
+			AND table_name = 'urls'
+		)
+	`).Scan(&tableExists)
+
+	if err != nil {
+		return fmt.Errorf("failed to check table existence: %w", err)
+	}
+
+	// Если таблица не существует, применяем миграции
+	if !tableExists {
+		log.Println("Database table 'urls' not found. Applying migrations...")
+
+		// 🔴 ДОБАВЛЕНО: Применяем миграции с помощью goose
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("failed to set dialect: %w", err)
+		}
+
+		if err := goose.Up(db.DB, "migrations"); err != nil {
+			return fmt.Errorf("failed to apply migrations: %w", err)
+		}
+
+		log.Println("Migrations applied successfully")
+	} else {
+		log.Println("Database table 'urls' already exists. Skipping migrations.")
+	}
+
+	return nil
+}
 
 func main() {
 	// Загрузка конфигурации
@@ -21,7 +61,6 @@ func main() {
 	}
 
 	// Подключение к базе данных
-	// 🟡 ИСПРАВЛЕНО: Используем метод GetDSN из конфига
 	db, err := sqlx.Connect("postgres", cfg.GetDSN())
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -32,6 +71,11 @@ func main() {
 	db.SetMaxOpenConns(cfg.DBMaxOpenConns)
 	db.SetMaxIdleConns(cfg.DBMaxIdleConns)
 	db.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
+
+	// 🔴 ДОБАВЛЕНО: Автоматическое применение миграций
+	if err := applyMigrations(db); err != nil {
+		log.Fatalf("Failed to apply database migrations: %v", err)
+	}
 
 	// Создание хранилища
 	storage := storage.NewPostgresStorage(db)
@@ -55,8 +99,35 @@ func main() {
 
 	router.GET("/:shortCode", urlHandler.RedirectHandler)
 
-	// Health check
+	// Health check с проверкой базы данных
 	router.GET("/health", func(c *gin.Context) {
+		// 🔴 ДОБАВЛЕНО: Проверка доступности базы данных
+		if err := db.Ping(); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "database unavailable",
+				"error":  err.Error(),
+			})
+			return
+		}
+
+		// 🔴 ДОБАВЛЕНО: Проверка существования таблицы
+		var tableExists bool
+		err := db.QueryRow(`
+			SELECT EXISTS (
+				SELECT FROM information_schema.tables 
+				WHERE table_schema = 'public' 
+				AND table_name = 'urls'
+			)
+		`).Scan(&tableExists)
+
+		if err != nil || !tableExists {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "database schema error",
+				"error":  "urls table does not exist",
+			})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 

@@ -27,7 +27,6 @@ type Config struct {
 	AppShortCodeLength int    `mapstructure:"APP_SHORT_CODE_LENGTH"`
 }
 
-// 🟡 ИСПРАВЛЕНО: Добавляем функцию LoadConfig
 // LoadConfig загружает конфигурацию из переменных окружения
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
@@ -55,6 +54,12 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// GetDSN возвращает строку подключения к PostgreSQL в формате DSN
+func (c *Config) GetDSN() string {
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName, c.DBSSLMode)
 }
 
 // getEnv получает значение переменной окружения или возвращает значение по умолчанию
@@ -109,13 +114,5 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("DB_USER is required")
 	}
 
-	// Дополнительные проверки могут быть добавлены здесь
-
 	return nil
-}
-
-// 🟡 ДОБАВЛЕНО: Вспомогательная функция для создания DSN
-func (c *Config) GetDSN() string {
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName, c.DBSSLMode)
 }
