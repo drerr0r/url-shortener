@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Shortener</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .container { background: #f5f5f5; padding: 30px; border-radius: 10px; }
+        input[type="url"] { width: 70%; padding: 10px; margin-right: 10px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .result { margin-top: 20px; padding: 15px; background: #d4edda; border-radius: 5px; display: none; }
+        .error { margin-top: 20px; padding: 15px; background: #f8d7da; border-radius: 5px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 URL Shortener</h1>
+        
+        <form id="shortenForm">
+            <input type="url" name="url" placeholder="Введите URL для сокращения" required>
+            <button type="submit">Сократить</button>
+        </form>
+
+        <div id="result" class="result"></div>
+        <div id="error" class="error"></div>
+    </div>
+
+    <script>
+        document.getElementById('shortenForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const url = formData.get('url');
+            
+            try {
+                const response = await fetch('/api/v1/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const shortUrl = `${window.location.origin}/${data.short_url}`;
+                    document.getElementById('result').innerHTML = `
+                        <strong>Сокращенная ссылка:</strong><br>
+                        <a href="${shortUrl}" target="_blank">${shortUrl}</a>
+                    `;
+                    document.getElementById('result').style.display = 'block';
+                    document.getElementById('error').style.display = 'none';
+                } else {
+                    throw new Error(data.error || 'Ошибка сервера');
+                }
+            } catch (error) {
+                document.getElementById('error').innerHTML = `
+                    <strong>Ошибка:</strong> ${error.message}
+                `;
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('result').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

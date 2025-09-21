@@ -12,11 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/pressly/goose/v3" // 🔴 ДОБАВЛЕНО: Импорт goose для миграций
+	"github.com/pressly/goose/v3"
 )
 
-// 🔴 ДОБАВЛЕНО: Функция для применения миграций
 // applyMigrations автоматически применяет миграции базы данных при запуске
+// Проверяет существование таблицы urls и применяет миграции если необходимо
 func applyMigrations(db *sqlx.DB) error {
 	// Проверяем существование таблицы urls
 	var tableExists bool
@@ -36,7 +36,7 @@ func applyMigrations(db *sqlx.DB) error {
 	if !tableExists {
 		log.Println("Database table 'urls' not found. Applying migrations...")
 
-		// 🔴 ДОБАВЛЕНО: Применяем миграции с помощью goose
+		// Применяем миграции с помощью goose
 		if err := goose.SetDialect("postgres"); err != nil {
 			return fmt.Errorf("failed to set dialect: %w", err)
 		}
@@ -72,7 +72,7 @@ func main() {
 	db.SetMaxIdleConns(cfg.DBMaxIdleConns)
 	db.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
 
-	// 🔴 ДОБАВЛЕНО: Автоматическое применение миграций
+	// Автоматическое применение миграций
 	if err := applyMigrations(db); err != nil {
 		log.Fatalf("Failed to apply database migrations: %v", err)
 	}
@@ -86,11 +86,19 @@ func main() {
 	// Настройка роутера
 	router := gin.Default()
 
+	// 🔴 ДОБАВЛЕНО: Загрузка HTML шаблонов
+	router.LoadHTMLGlob("templates/*")
+
 	// Middleware
 	router.Use(middleware.LoggingMiddleware())
 	router.Use(middleware.RecoveryMiddleware())
 
-	// Маршруты
+	// 🔴 ДОБАВЛЕНО: Обработчик для главной страницы с HTML формой
+	router.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", gin.H{})
+	})
+
+	// Маршруты API
 	api := router.Group("/api/v1")
 	{
 		api.POST("/shorten", urlHandler.ShortenURLHandler)
@@ -101,7 +109,7 @@ func main() {
 
 	// Health check с проверкой базы данных
 	router.GET("/health", func(c *gin.Context) {
-		// 🔴 ДОБАВЛЕНО: Проверка доступности базы данных
+		// Проверка доступности базы данных
 		if err := db.Ping(); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"status": "database unavailable",
@@ -110,7 +118,7 @@ func main() {
 			return
 		}
 
-		// 🔴 ДОБАВЛЕНО: Проверка существования таблицы
+		// Проверка существования таблицы
 		var tableExists bool
 		err := db.QueryRow(`
 			SELECT EXISTS (
